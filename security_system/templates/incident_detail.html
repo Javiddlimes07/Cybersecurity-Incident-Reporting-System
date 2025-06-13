@@ -87,17 +87,18 @@
 {% endif %}
 
 <!-- 刪除事件功能 -->
+{% if user.role.value == 'admin' %}
 <div class="security-card">
     <h2 style="color: var(--primary-red); font-family: 'Orbitron', monospace; margin-bottom: 20px;">
         ◆ 刪除事件記錄 ◆
     </h2>
     
     <p class="alert-error">
-        請注意，刪除事件將永久移除所有相關資料，且無法復原！
+        警告：刪除事件「{{ incident.title }}」(ID: {{ incident.incident_id[:8] }}...) 將永久移除所有相關資料，無法復原！
     </p>
     
-    <button class="cyber-btn" onclick="confirmDelete('{{ incident.incident_id }}', '{{ incident.title }}')">
-        ◢ 刪除此事件 ◣
+    <button class="cyber-btn" onclick="confirmDelete('{{ incident.incident_id }}', '{{ incident.title | escape }}')">
+        ◢ 確認刪除事件 ◣
     </button>
 </div>
 
@@ -105,10 +106,11 @@
     // 確認刪除事件的函數
     function confirmDelete(incidentId, incidentTitle) {
         const confirmation = confirm(
-            `確定要刪除以下事件嗎？\n\n` +
+            `您即將刪除以下事件：\n\n` +
             `事件標題：${incidentTitle}\n` +
             `事件ID：${incidentId}\n\n` +
-            `此操作無法復原！`
+            `此操作將永久刪除事件及其相關日誌和標籤，無法復原！\n` +
+            `請確認是否繼續？`
         );
 
         if (confirmation) {
@@ -128,6 +130,8 @@
             form.submit();
         }
     }
+</script>
+{% endif %}
 
 
 <!-- 狀態更新功能 -->

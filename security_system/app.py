@@ -75,7 +75,9 @@ class DatabaseManager:
         self.init_database()
 
     def get_connection(self):
-        return sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn
 
     def init_database(self):
         conn = self.get_connection()
@@ -673,27 +675,36 @@ class IncidentManager:
             conn.close()
     
     def delete_incident(self, incident_id: str, deleter_id: str) -> tuple[bool, str]:
-        """刪除資安事件."""
+        """刪除單一資安事件，僅限管理員操作，確保不影響其他資料."""
         if not incident_id or not deleter_id:
             return False, "事件ID和刪除者ID不能為空"
         conn = self.db_manager.get_connection()
         cursor = conn.cursor()
         try:
             # 檢查事件是否存在
-            cursor.execute("SELECT incident_id FROM security_incidents WHERE incident_id = ?", (incident_id,))
-            if not cursor.fetchone():
+            cursor.execute("SELECT incident_id, title FROM security_incidents WHERE incident_id = ?", (incident_id,))
+            incident = cursor.fetchone()
+            if not incident:
                 return False, "事件不存在"
             
-            # 記錄刪除操作日誌
-            self._add_incident_log(incident_id, deleter_id, LogType.USER_ACTION.value, "DELETED", "事件已被刪除", cursor)
+            incident_title = incident[1]  # 取得事件標題用於日誌
+            # 記錄刪除操作日誌，包含事件標題
+            self._add_incident_log(
+                incident_id, 
+                deleter_id, 
+                LogType.USER_ACTION.value, 
+                "DELETED", 
+                f"事件 '{incident_title}' (ID: {incident_id}) 已被刪除", 
+                cursor
+            )
             
-            # 刪除相關資料（由於外鍵約束，按順序刪除）
+            # 按順序刪除相關資料，確保外鍵約束正確處理
             cursor.execute("DELETE FROM incident_tags WHERE incident_id = ?", (incident_id,))
             cursor.execute("DELETE FROM incident_logs WHERE incident_id = ?", (incident_id,))
             cursor.execute("DELETE FROM security_incidents WHERE incident_id = ?", (incident_id,))
             
             conn.commit()
-            return True, "事件刪除成功"
+            return True, f"事件 '{incident_title}' 刪除成功"
         except sqlite3.Error as e:
             conn.rollback()
             return False, f"刪除事件錯誤: {e}"
@@ -942,22 +953,17 @@ def about():
 @login_required
 def delete_incident(incident_id):
     """刪除事件路由，包含安全性檢查與權限驗證"""
-
-    # 雖然使用 methods=['POST'] 已限制請求方式，但為保險仍可檢查
     if request.method != 'POST':
         flash("無效的請求方法", "error")
         return redirect(url_for('dashboard'))
 
-    # 檢查是否為管理員權限
     if system.current_user.role != UserRole.ADMIN:
         flash("權限不足，僅管理員可刪除事件", "error")
         return redirect(url_for('dashboard'))
 
-    # 執行刪除操作
     success, message = system.delete_incident(incident_id)
     flash(message, "success" if success else "error")
 
-    # 根據刪除結果導向適當頁面
     if success:
         return redirect(url_for('dashboard'))
     else:
